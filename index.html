@@ -1,30 +1,46 @@
-<div id="app" style="max-width:480px;margin:0 auto;font-family:var(--font-sans, sans-serif);">
-  <h2 style="font-size:18px;font-weight:500;margin:0 0 4px;">Generador de stands Hugo</h2>
-  <p style="font-size:14px;color:var(--text-secondary,#666);margin:0 0 20px;">Sube el logo del negocio, sube tambi&eacute;n el c&oacute;digo QR del negocio (el que lleva a sus rese&ntilde;as de Google), elige el color del borde y descarga el PDF listo para imprimir. Incluye 5 mm de sangrado de color por cada lado y marcas de corte, para que al recortarlo no se vea ning&uacute;n borde blanco.</p>
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Generador de stands Hugo</title>
+<style>
+  html, body { margin:0; padding:0; background:#fafafa; }
+  input[type="file"] { font-size:16px; }
+  #app input[type="file"]::file-selector-button {
+    font-size:15px; padding:10px 14px; border-radius:8px; border:1px solid #ccc;
+    background:#fff; margin-right:10px; cursor:pointer;
+  }
+</style>
+</head>
+<body>
+<div id="app" style="max-width:520px;margin:0 auto;font-family:var(--font-sans, sans-serif);padding:16px;box-sizing:border-box;">
+  <h2 style="font-size:22px;font-weight:600;margin:0 0 6px;">Generador de stands Hugo</h2>
+  <p style="font-size:16px;line-height:1.5;color:var(--text-secondary,#666);margin:0 0 24px;">Sube el logo del negocio, sube tambi&eacute;n el c&oacute;digo QR del negocio (el que lleva a sus rese&ntilde;as de Google), elige el color del borde y descarga el PDF listo para imprimir. Incluye 5 mm de sangrado de color por cada lado y marcas de corte, para que al recortarlo no se vea ning&uacute;n borde blanco.</p>
 
   <div style="margin-bottom:16px;">
-    <label style="display:block;font-size:14px;font-weight:500;margin-bottom:6px;">Logotipo del negocio</label>
-    <input type="file" id="logoInput" accept="image/*" style="width:100%;font-size:14px;">
+    <label style="display:block;font-size:16px;font-weight:600;margin-bottom:8px;">Logotipo del negocio</label>
+    <input type="file" id="logoInput" accept="image/*" style="width:100%;font-size:16px;padding:10px 0;">
   </div>
 
   <div style="margin-bottom:16px;">
-    <label style="display:block;font-size:14px;font-weight:500;margin-bottom:6px;">C&oacute;digo QR del negocio</label>
-    <input type="file" id="qrInput" accept="image/*" style="width:100%;font-size:14px;">
+    <label style="display:block;font-size:16px;font-weight:600;margin-bottom:8px;">C&oacute;digo QR del negocio</label>
+    <input type="file" id="qrInput" accept="image/*" style="width:100%;font-size:16px;padding:10px 0;">
   </div>
 
   <div style="margin-bottom:20px;display:flex;align-items:center;gap:12px;">
-    <label style="font-size:14px;font-weight:500;" for="colorInput">Color del borde</label>
-    <input type="color" id="colorInput" value="#EDBFD9" style="width:48px;height:36px;border:none;padding:0;cursor:pointer;">
-    <span id="colorHex" style="font-size:13px;color:var(--text-secondary,#666);font-family:monospace;">#EDBFD9</span>
+    <label style="font-size:16px;font-weight:600;" for="colorInput">Color del borde</label>
+    <input type="color" id="colorInput" value="#EDBFD9" style="width:56px;height:44px;border:none;padding:0;cursor:pointer;border-radius:6px;">
+    <span id="colorHex" style="font-size:15px;color:var(--text-secondary,#666);font-family:monospace;">#EDBFD9</span>
   </div>
 
   <canvas id="preview" style="width:100%;border:1px solid var(--border,#ddd);border-radius:8px;display:block;margin-bottom:16px;"></canvas>
 
   <div style="display:flex;flex-direction:column;gap:10px;">
-    <button id="downloadPdfPlain" style="padding:10px 16px;font-size:14px;font-weight:500;border:none;border-radius:8px;background:#1a1a1a;color:#fff;cursor:pointer;">Generar PDF</button>
-    <button id="downloadPdfPrint" style="padding:10px 16px;font-size:14px;font-weight:500;border:none;border-radius:8px;background:#1a1a1a;color:#fff;cursor:pointer;">Generar PDF impresi&oacute;n</button>
+    <button id="downloadPdfPlain" style="padding:16px 16px;font-size:17px;font-weight:600;border:none;border-radius:10px;background:#1a1a1a;color:#fff;cursor:pointer;">Generar PDF</button>
+    <button id="downloadPdfPrint" style="padding:16px 16px;font-size:17px;font-weight:600;border:none;border-radius:10px;background:#1a1a1a;color:#fff;cursor:pointer;">Generar PDF impresi&oacute;n</button>
   </div>
-  <p id="status" style="font-size:13px;color:var(--text-secondary,#666);margin-top:10px;"></p>
+  <p id="status" style="font-size:15px;line-height:1.4;color:var(--text-secondary,#666);margin-top:12px;"></p>
 </div>
 
 <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
@@ -221,3 +237,6 @@ function downloadPdf(pdfBytes, filename) {
 document.getElementById('downloadPdfPlain').addEventListener('click', () => generatePdf(false));
 document.getElementById('downloadPdfPrint').addEventListener('click', () => generatePdf(true));
 </script>
+
+</body>
+</html>
