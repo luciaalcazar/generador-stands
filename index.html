@@ -20,8 +20,9 @@
 
   <canvas id="preview" style="width:100%;border:1px solid var(--border,#ddd);border-radius:8px;display:block;margin-bottom:16px;"></canvas>
 
-  <div style="display:flex;gap:10px;">
-    <button id="downloadPdf" style="flex:1;padding:10px 16px;font-size:14px;font-weight:500;border:none;border-radius:8px;background:#1a1a1a;color:#fff;cursor:pointer;">Descargar PDF</button>
+  <div style="display:flex;flex-direction:column;gap:10px;">
+    <button id="downloadPdfPlain" style="padding:10px 16px;font-size:14px;font-weight:500;border:none;border-radius:8px;background:#1a1a1a;color:#fff;cursor:pointer;">Generar PDF</button>
+    <button id="downloadPdfPrint" style="padding:10px 16px;font-size:14px;font-weight:500;border:none;border-radius:8px;background:#1a1a1a;color:#fff;cursor:pointer;">Generar PDF impresi&oacute;n</button>
   </div>
   <p id="status" style="font-size:13px;color:var(--text-secondary,#666);margin-top:10px;"></p>
 </div>
@@ -140,18 +141,32 @@ function hexToRgb01(hex) {
   return {r,g,b};
 }
 
-document.getElementById('downloadPdf').addEventListener('click', async () => {
+async function generatePdf(withBleed) {
   const statusEl = document.getElementById('status');
   statusEl.textContent = 'Generando PDF...';
   try {
     const pngDataUrl = canvas.toDataURL('image/png');
     const pngBytes = await fetch(pngDataUrl).then(r => r.arrayBuffer());
 
+    const { PDFDocument, rgb } = PDFLib;
+    const pdfDoc = await PDFDocument.create();
+
+    if (!withBleed) {
+      // Plain version: exact trim size (12x14cm), no bleed, no crop marks
+      const page = pdfDoc.addPage([PAGE_W_PT, PAGE_H_PT]);
+      const pngImage = await pdfDoc.embedPng(pngBytes);
+      page.drawImage(pngImage, { x: 0, y: 0, width: PAGE_W_PT, height: PAGE_H_PT });
+
+      const pdfBytes = await pdfDoc.save();
+      downloadPdf(pdfBytes, 'stand_resenas.pdf');
+      statusEl.textContent = 'Listo. PDF generado a tama\u00f1o final (12x14 cm), sin sangrado.';
+      return;
+    }
+
+    // Print version: 5mm bleed of border color on all sides + crop marks
     const BLEED_MM = 5;
     const BLEED_PT = BLEED_MM / 25.4 * 72; // ~14.173pt
 
-    const { PDFDocument, rgb } = PDFLib;
-    const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage([PAGE_W_PT + BLEED_PT*2, PAGE_H_PT + BLEED_PT*2]);
 
     const c = hexToRgb01(borderColor);
@@ -186,16 +201,23 @@ document.getElementById('downloadPdf').addEventListener('click', async () => {
     mark(x1+GAP, y1, x1+GAP+LEN, y1);
 
     const pdfBytes = await pdfDoc.save();
-    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'stand_resenas.pdf';
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadPdf(pdfBytes, 'stand_resenas_impresion.pdf');
     statusEl.textContent = 'Listo. El PDF incluye 5 mm de sangrado del color de borde y marcas de corte en las esquinas.';
   } catch (err) {
     statusEl.textContent = 'Error generando el PDF: ' + err.message;
   }
-});
+}
+
+function downloadPdf(pdfBytes, filename) {
+  const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById('downloadPdfPlain').addEventListener('click', () => generatePdf(false));
+document.getElementById('downloadPdfPrint').addEventListener('click', () => generatePdf(true));
 </script>
