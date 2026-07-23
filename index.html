@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<title>Generador de stands de pirri Hugo</title>
+<title>Generador de stands Hugo</title>
 <style>
   html, body { margin:0; padding:0; background:#fafafa; }
   input[type="file"] { font-size:16px; }
@@ -149,6 +149,50 @@ document.getElementById('colorInput').addEventListener('input', (e) => {
   render();
 });
 
+// Tags a PNG (as produced by canvas.toDataURL, which has no color profile info) as
+// standard sRGB, by inserting the PNG "sRGB" chunk right after IHDR. Without this,
+// some PDF viewers (notably Acrobat) assume a wider color profile for untagged RGB
+// images, making saturated colors (like bright oranges/reds) render more vivid than
+// what the browser actually shows on screen.
+function tagPngAsSRGB(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
+  const crcTable = tagPngAsSRGB._crcTable || (tagPngAsSRGB._crcTable = (() => {
+    const table = [];
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      table[n] = c >>> 0;
+    }
+    return table;
+  })());
+  function crc32(buf) {
+    let c = 0xFFFFFFFF;
+    for (let i = 0; i < buf.length; i++) c = crcTable[(c ^ buf[i]) & 0xFF] ^ (c >>> 8);
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  // PNG signature (8 bytes) + IHDR chunk: 4 (length) + 4 (type) + 13 (data) + 4 (crc) = 25 bytes
+  const ihdrEnd = 8 + 25;
+
+  const type = new Uint8Array([0x73, 0x52, 0x47, 0x42]); // "sRGB"
+  const data = new Uint8Array([0]); // rendering intent: 0 = Perceptual
+  const typeAndData = new Uint8Array([...type, ...data]);
+  const crc = crc32(typeAndData);
+
+  const chunk = new Uint8Array(4 + 4 + 1 + 4);
+  const view = new DataView(chunk.buffer);
+  view.setUint32(0, 1); // length of data (1 byte)
+  chunk.set(type, 4);
+  chunk.set(data, 8);
+  view.setUint32(9, crc);
+
+  const result = new Uint8Array(bytes.length + chunk.length);
+  result.set(bytes.subarray(0, ihdrEnd), 0);
+  result.set(chunk, ihdrEnd);
+  result.set(bytes.subarray(ihdrEnd), ihdrEnd + chunk.length);
+  return result.buffer;
+}
+
 function hexToRgb01(hex) {
   const h = hex.replace('#','');
   const r = parseInt(h.substring(0,2),16)/255;
@@ -161,14 +205,15 @@ async function generatePdf(withBleed) {
   const statusEl = document.getElementById('status');
   statusEl.textContent = 'Generando PDF...';
   try {
-    const pngDataUrl = canvas.toDataURL('image/png');
-    const pngBytes = await fetch(pngDataUrl).then(r => r.arrayBuffer());
-
-    const { PDFDocument, rgb } = PDFLib;
+    const { PDFDocument } = PDFLib;
     const pdfDoc = await PDFDocument.create();
 
     if (!withBleed) {
-      // Plain version: exact trim size (12x14cm), no bleed, no crop marks
+      // Plain version: exact trim size (12x14cm), no bleed, no crop marks.
+      // Uses the exact same canvas pixels shown in the preview, so the color always matches.
+      const pngDataUrl = canvas.toDataURL('image/png');
+      let pngBytes = await fetch(pngDataUrl).then(r => r.arrayBuffer());
+      pngBytes = tagPngAsSRGB(pngBytes);
       const page = pdfDoc.addPage([PAGE_W_PT, PAGE_H_PT]);
       const pngImage = await pdfDoc.embedPng(pngBytes);
       page.drawImage(pngImage, { x: 0, y: 0, width: PAGE_W_PT, height: PAGE_H_PT });
@@ -179,32 +224,39 @@ async function generatePdf(withBleed) {
       return;
     }
 
-    // Print version: 5mm bleed of border color on all sides + crop marks
+    // Print version: build ONE single canvas with the bleed color + design + crop marks,
+    // so every pixel (border and bleed alike) comes from the exact same color, with no
+    // possible mismatch between the preview and the final PDF.
     const BLEED_MM = 5;
     const BLEED_PT = BLEED_MM / 25.4 * 72; // ~14.173pt
+    const BLEED_PX = Math.round(BLEED_PT * PX_PER_PT);
 
-    const page = pdfDoc.addPage([PAGE_W_PT + BLEED_PT*2, PAGE_H_PT + BLEED_PT*2]);
+    const bleedCanvas = document.createElement('canvas');
+    bleedCanvas.width = CANVAS_W + BLEED_PX*2;
+    bleedCanvas.height = CANVAS_H + BLEED_PX*2;
+    const bctx = bleedCanvas.getContext('2d');
 
-    const c = hexToRgb01(borderColor);
-    page.drawRectangle({
-      x: 0, y: 0,
-      width: PAGE_W_PT + BLEED_PT*2, height: PAGE_H_PT + BLEED_PT*2,
-      color: rgb(c.r, c.g, c.b)
-    });
+    // 1) fill the whole bleed canvas with the exact same border color used in the preview
+    bctx.fillStyle = borderColor;
+    bctx.fillRect(0, 0, bleedCanvas.width, bleedCanvas.height);
 
-    const pngImage = await pdfDoc.embedPng(pngBytes);
-    page.drawImage(pngImage, { x: BLEED_PT, y: BLEED_PT, width: PAGE_W_PT, height: PAGE_H_PT });
+    // 2) drop in the already-rendered trim design (border+interior+logo+QR), centered
+    bctx.drawImage(canvas, BLEED_PX, BLEED_PX);
 
-    const GAP = 2;
-    const LEN = 10;
-    const markColor = rgb(0,0,0);
-    const thickness = 0.75;
+    // 3) crop marks in the bleed area, at the trim corners
+    const GAP = 2 * PX_PER_PT;
+    const LEN = 10 * PX_PER_PT;
+    bctx.strokeStyle = '#000';
+    bctx.lineWidth = 0.75 * PX_PER_PT;
 
-    const x0 = BLEED_PT, y0 = BLEED_PT;
-    const x1 = BLEED_PT + PAGE_W_PT, y1 = BLEED_PT + PAGE_H_PT;
+    const x0 = BLEED_PX, y0 = BLEED_PX;
+    const x1 = BLEED_PX + CANVAS_W, y1 = BLEED_PX + CANVAS_H;
 
     function mark(sx, sy, ex, ey) {
-      page.drawLine({ start:{x:sx,y:sy}, end:{x:ex,y:ey}, thickness, color: markColor });
+      bctx.beginPath();
+      bctx.moveTo(sx, sy);
+      bctx.lineTo(ex, ey);
+      bctx.stroke();
     }
 
     mark(x0, y0-GAP, x0, y0-GAP-LEN);
@@ -215,6 +267,14 @@ async function generatePdf(withBleed) {
     mark(x0-GAP, y1, x0-GAP-LEN, y1);
     mark(x1, y1+GAP, x1, y1+GAP+LEN);
     mark(x1+GAP, y1, x1+GAP+LEN, y1);
+
+    const bleedPngDataUrl = bleedCanvas.toDataURL('image/png');
+    let bleedPngBytes = await fetch(bleedPngDataUrl).then(r => r.arrayBuffer());
+    bleedPngBytes = tagPngAsSRGB(bleedPngBytes);
+
+    const page = pdfDoc.addPage([PAGE_W_PT + BLEED_PT*2, PAGE_H_PT + BLEED_PT*2]);
+    const pngImage = await pdfDoc.embedPng(bleedPngBytes);
+    page.drawImage(pngImage, { x: 0, y: 0, width: PAGE_W_PT + BLEED_PT*2, height: PAGE_H_PT + BLEED_PT*2 });
 
     const pdfBytes = await pdfDoc.save();
     downloadPdf(pdfBytes, 'stand_resenas_impresion.pdf');
